@@ -1,0 +1,215 @@
+---
+title: "Peer-graded Assignment: Prediction Assignment Writeup"
+author: "Stefanvr001"
+date: "14 June 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Peer-graded Assignment: Prediction Assignment Writeup
+
+#### Background
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+#### Peer Review Portion
+Your submission for the Peer Review portion should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+
+#### Course Project Prediction Quiz Portion
+Apply your machine learning algorithm to the 20 test cases available in the test data above and submit your predictions in appropriate format to the Course Project Prediction Quiz for automated grading.
+
+
+
+
+#### Description of work
+
+I loaded the data and inspected the structure and contents of the column variables (Code will follow below). Upon inspection there were various columns that had NA values. After looking at how densly populated the columns were I decided to drop a lot of variables with missing values. 
+
+There after I did a principal component analysis and saw that approx. 99% of the variance can be explained with 7 variables. 
+
+I set out with the goal of trying 3 methods for prediction and if anyone didn't provide a relatively good accuracy level that I would try stacking models for a better fit. I didn't need to go that route after trying the 3rd model. 
+
+
+
+
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+library(caret)
+library(ggplot2)
+library(rattle)
+options(digits = 5)
+
+setwd("~/R/R Exercises/Coursera/Course8")
+
+train<-read.csv("pml-training.csv", stringsAsFactors = FALSE)
+test<-read.csv("pml-testing.csv", stringsAsFactors = FALSE)
+
+for(i in 8:159){
+  train[,i]<-as.numeric(train[,i])
+}
+for(i in 8:159){
+  test[,i]<-as.numeric(test[,i])
+}
+
+
+### MEANS
+classeIndicatorsMean<-as.data.frame(matrix(0,nrow = length(unique(train$classe)), ncol = 160-8))
+names(classeIndicatorsMean)<-paste0(names(train)[8:159], "_MEAN")
+classeIndicatorsMean$classe<-unique(train$classe)
+
+for(i in 1:length(unique(train$classe))){
+  index<-which(train$classe == classeIndicatorsMean$classe[i])
+  temp<-train[index,-c(1:7,160)]
+  vec<-colMeans(temp, na.rm = TRUE)
+  classeIndicatorsMean[i,-153]<-vec
+}
+
+### NA VALS
+classeIndicatorsNA<-as.data.frame(matrix(0,nrow = length(unique(train$classe)), ncol = 160-8))
+names(classeIndicatorsNA)<-paste0(names(train)[8:159], "_NA")
+classeIndicatorsNA$classe<-unique(train$classe)
+
+
+for(i in 1:length(unique(train$classe))){
+  index<-which(train$classe == classeIndicatorsNA$classe[i])
+  temp<-train[index,-c(1:7,160)]
+  for(j in 1:dim(temp)[2]){
+    index2<-length(which(is.na(temp[,j])))/length(temp[,j])
+    classeIndicatorsNA[i,j]<-index2
+  }
+}
+
+vec<-colMeans(classeIndicatorsNA[,-153])
+index<-which(vec>0.5)
+vec<-vec[index]
+
+vec2<-which(paste0(names(train),"_NA") %in% names(vec))
+train2<-train[,-vec2]
+
+vec2<-which(paste0(names(test),"_NA") %in% names(vec))
+test2<-test[,-vec2]
+
+
+covtrain2_pca <- cov(train2[,c(8:59)])
+train2_pca <- prcomp(covtrain2_pca)
+varex <- train2_pca$sdev^2/sum(train2_pca$sdev^2)
+varcum <- cumsum(varex)
+result <- data.frame(num=1:length(train2_pca$sdev), ex=varex, cum=varcum)
+
+plot(result$num,result$cum,type="b",xlim=c(0,30),
+     main="Variance Explained by Top 30 Components",
+     xlab="Number of Components",ylab="Variance Explained")
+abline(v=7,lty=2, col='red', lwd=2)
+
+### Drop some more variables
+train3<-train2[,-c(1:7)]
+test3<-test2[,-c(1:7)]
+
+
+
+```
+
+
+
+#### Summary of results
+
+I used the following methods from the caret package: RPart, Random Forest and Gradient Boosting. 
+
+The best results came from the using Gradient Boosting (96.% accuaracy on the test set with no overfitting)
+
+
+
+
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+
+
+### BUILD MODELS
+set.seed(101)
+intrain<-createDataPartition(train3$classe, p=0.7, list = FALSE)
+trainingSet<-train3[intrain,]
+testingSet<-train3[-intrain,]
+
+### RPART
+modelfitRP<-train(classe ~., method='rpart', data=trainingSet)
+#fancyRpartPlot(modelfitRP$finalModel)
+
+### Train accuracy
+predictCatRP<-predict(modelfitRP, newdata = trainingSet)
+errorRateRP<-which(trainingSet$classe != predictCatRP)
+
+cat("Train Accuracy for RPart method: ", round((1-length(errorRateRP)/length(trainingSet$classe))*100,2), "%","\n")
+
+### Test accuracy
+predictCatRP<-predict(modelfitRP, newdata = testingSet)
+errorRateRP<-which(testingSet$classe != predictCatRP)
+cat("Test Accuracy for RPart method: ", round((1-length(errorRateRP)/length(testingSet$classe))*100,2), "%","\n")
+
+cat("Misclassification areas for RPart method: (Rows = Actuals; Columns = Predictions) ","\n")
+prop.table(table(testingSet$classe, predictCatRP))*100
+
+cat("Notes on the model: ","\n",
+    "- The model is very stable in prediction accuracy between train and test sets; ","\n",
+    "- The model is very quick to run; ","\n",
+    "- The model doesn't predict the categories B,C and D well at all. ","\n")
+
+
+
+### RANDOM FOREST
+modelfitRF<-train(classe ~., method='rf', data=trainingSet, prox=TRUE)
+predictvalsRF<-predict(modelfitRF, newdata = testingSet)
+
+### Train accuracy
+predictCatRF<-predict(modelfitRF, newdata = trainingSet)
+errorRateRF<-which(trainingSet$classe != predictCatRF)
+cat("Train Accuracy on RandomForest: ", round((1-length(errorRateRP)/length(trainingSet$classe))*100,2), "%","\n")
+
+### Test accuracy
+predictCatRF<-predict(modelfitRF, newdata = testingSet)
+errorRateRF<-which(testingSet$classe != predictCatRF)
+cat("Test Accuracy on RandomForest: ", round((1-length(errorRateRF)/length(testingSet$classe))*100,2), "%","\n")
+
+prop.table(table(testingSet$classe, predictCatRF))*100
+
+cat("Notes on the model: ","\n",
+    "- The model is very stable in prediction accuracy between train and test sets; ","\n",
+    "- The model takes extremely long to run; ","\n",
+    "- The model produces better results than the RPart method for all categories. ","\n")
+
+
+### GBM
+modelfitGBM<-train(classe ~., method='gbm', data=trainingSet, verbose=FALSE)
+predictvalsGBM<-predict(modelfitGBM, newdata = testingSet)
+
+### Train accuracy
+predictCatGBM<-predict(modelfitGBM, newdata = trainingSet)
+errorRateGBM<-which(trainingSet$classe != predictCatGBM)
+cat("Train Accuracy for GBM: ", round((1-length(errorRateGBM)/length(trainingSet$classe))*100,2), "%","\n")
+
+### Test accuracy
+predictCatGBM<-predict(modelfitGBM, newdata = testingSet)
+errorRateGBM<-which(testingSet$classe != predictCatGBM)
+cat("Test Accuracy for GBM: ", round((1-length(errorRateGBM)/length(testingSet$classe))*100,2), "%","\n")
+
+prop.table(table(testingSet$classe, predictCatGBM))*100
+
+cat("Notes on the model: ","\n",
+    "- The model is very stable in prediction accuracy between train and test sets; ","\n",
+    "- The model is quite quick to run; ","\n",
+    "- The model produces great results for all categories. ","\n")
+
+
+
+## SECOND TEST SET
+predictCatGBM2<-predict(modelfitGBM, newdata = test3)
+write.csv(predictCatGBM2, "testPredictions.csv")
+
+
+
+```
+
+
+
+
