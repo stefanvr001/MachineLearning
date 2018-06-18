@@ -118,7 +118,11 @@ test3<-test2[,-c(1:7)]
 
 I used the following methods from the caret package: RPart, Random Forest and Gradient Boosting. 
 
-The best results came from the using Gradient Boosting (96.% accuaracy on the test set with no overfitting)
+The best results came from the using Gradient Boosting and Random Forest.
+The Random Forest produced the best accuracy (99%), but at the cost of nearly 4hours spent training the model. On the other hand, the GBM produced 96% accuracy while only taking about 15 minutes to train the model. 
+
+The choice of the model will depend on the user's preference and the requirement for the task at hand. 
+
 
 
 
@@ -164,7 +168,7 @@ predictvalsRF<-predict(modelfitRF, newdata = testingSet)
 ### Train accuracy
 predictCatRF<-predict(modelfitRF, newdata = trainingSet)
 errorRateRF<-which(trainingSet$classe != predictCatRF)
-cat("Train Accuracy on RandomForest: ", round((1-length(errorRateRP)/length(trainingSet$classe))*100,2), "%","\n")
+cat("Train Accuracy on RandomForest: ", round((1-length(errorRateRF)/length(trainingSet$classe))*100,2), "%","\n")
 
 ### Test accuracy
 predictCatRF<-predict(modelfitRF, newdata = testingSet)
